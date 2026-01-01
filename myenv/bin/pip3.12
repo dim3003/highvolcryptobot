@@ -1,4 +1,4 @@
-#!/home/dimitri/Repos/highvolcryptobot/myenv/bin/python3
+#!/home/dimitri/Repos/highvolcryptobot/myenv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys
