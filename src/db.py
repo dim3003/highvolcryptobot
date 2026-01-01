@@ -4,7 +4,7 @@ from psycopg2.extensions import connection as Connection
 from psycopg2.extras import execute_values
 from typing import List
 from .sql import (
-    CREATE_TOKENS_TABLE_SQL,
+    CREATE_CONTRACTS_TABLE_SQL,
     INSERT_TOKENS_SQL,
 )
 
@@ -19,7 +19,7 @@ class DBService:
         rows = [(t,) for t in tokens]
         try:
             with self.conn.cursor() as curs:
-                curs.execute(CREATE_TOKENS_TABLE_SQL)
+                curs.execute(CREATE_CONTRACTS_TABLE_SQL)
                 execute_values(curs, INSERT_TOKENS_SQL, rows)
             self.conn.commit()
             logger.info("Inserted %d tokens", len(tokens))
