@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from src.db import DBService
 from psycopg2.extras import execute_values
-from src.sql import INSERT_TOKENS_SQL, CREATE_CONTRACTS_TABLE_SQL
+from src.sql import INSERT_CONTRACTS_SQL, CREATE_CONTRACTS_TABLE_SQL
 
 def test_dbservice_store_tokens(mocker):
     # Sample token addresses
@@ -35,7 +35,7 @@ def test_dbservice_store_tokens(mocker):
     expected_rows = [(t,) for t in tokens]
     insert_sql_arg = mock_execute_values.call_args[0][1]
     values_arg = mock_execute_values.call_args[0][2]
-    assert insert_sql_arg == INSERT_TOKENS_SQL
+    assert insert_sql_arg == INSERT_CONTRACTS_SQL
     assert values_arg == expected_rows
 
     # 3. Commit called

@@ -5,7 +5,7 @@ from psycopg2.extras import execute_values
 from typing import List
 from .sql import (
     CREATE_CONTRACTS_TABLE_SQL,
-    INSERT_TOKENS_SQL,
+    INSERT_CONTRACTS_SQL,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class DBService:
         try:
             with self.conn.cursor() as curs:
                 curs.execute(CREATE_CONTRACTS_TABLE_SQL)
-                execute_values(curs, INSERT_TOKENS_SQL, rows)
+                execute_values(curs, INSERT_CONTRACTS_SQL, rows)
             self.conn.commit()
             logger.info("Inserted %d tokens", len(tokens))
         except Exception as e:
