@@ -15,3 +15,7 @@ ON CONFLICT (token_address) DO NOTHING;
 SELECT_COUNT_CONTRACTS = """
 SELECT COUNT(*) FROM contracts;
 """
+
+SELECT_CONTRACTS_SQL = """
+SELECT * FROM contracts;
+"""

@@ -6,6 +6,7 @@ from typing import List
 from .sql import (
     CREATE_CONTRACTS_TABLE_SQL,
     INSERT_CONTRACTS_SQL,
+    SELECT_CONTRACTS_SQL,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,3 +28,13 @@ class DBService:
             self.conn.rollback()
             logger.exception("Failed to insert tokens")
             raise e
+
+    def get_tokens(self):
+        try:
+            with self.conn.cursor() as curs:
+                curs.execute(SELECT_CONTRACTS_SQL)
+                return [row[0] for row in curs.fetchall()]
+        except Exception:
+            logger.exception("Failed to select contract addresses")
+            raise
+

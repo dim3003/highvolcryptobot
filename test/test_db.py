@@ -2,7 +2,11 @@ import pytest
 from unittest.mock import MagicMock
 from src.db import DBService
 from psycopg2.extras import execute_values
-from src.sql import INSERT_CONTRACTS_SQL, CREATE_CONTRACTS_TABLE_SQL
+from src.sql import (
+    INSERT_CONTRACTS_SQL,
+    CREATE_CONTRACTS_TABLE_SQL,
+    SELECT_CONTRACTS_SQL
+)
 
 def test_dbservice_store_tokens(mocker):
     # Sample token addresses
@@ -40,4 +44,32 @@ def test_dbservice_store_tokens(mocker):
 
     # 3. Commit called
     mock_conn.commit.assert_called()
+
+def test_dbservice_get_tokens(mocker):
+    # --- Mock Postgres connection and cursor ---
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.connection.encoding = 'UTF8'
+    mock_cursor.fetchall.return_value = [
+        ('0x32eb7902d4134bf98a28b963d26de779af92a212',),
+        ('0x539bde0d7dbd336b79148aa742883198bbf60342',)
+    ]
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+    # Create DBService instance with mock connection
+    db_service = DBService(mock_conn)
+
+    # Call store_tokens
+    result = db_service.get_tokens()
+
+    # --- Assertions ---
+    # 1. Check that the correct SQL was used
+    get_contracts_call = mock_cursor.execute.call_args_list[0][0][0]
+    assert SELECT_CONTRACTS_SQL in get_contracts_call 
+
+    # 2. Check that the returned list is correct
+    assert result == [
+        "0x32eb7902d4134bf98a28b963d26de779af92a212",
+        "0x539bde0d7dbd336b79148aa742883198bbf60342",
+    ]
 
