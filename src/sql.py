@@ -49,3 +49,7 @@ ON CONFLICT (token_address, timestamp) DO UPDATE SET
     market_cap = EXCLUDED.market_cap,
     total_volume = EXCLUDED.total_volume;
 """
+
+SELECT_ALL_PRICES_SQL = """
+SELECT * FROM prices;
+"""

@@ -1,5 +1,6 @@
 import logging
 import psycopg2
+import pandas as pd
 from psycopg2.extensions import connection as Connection
 from psycopg2.extras import execute_values
 from typing import List
@@ -11,6 +12,7 @@ from src.sql import (
     CREATE_PRICES_INDEX_TOKEN_SQL,
     CREATE_PRICES_INDEX_TIMESTAMP_SQL,
     INSERT_PRICES_SQL,
+    SELECT_ALL_PRICES_SQL
 )
 
 logger = logging.getLogger(__name__)
@@ -74,4 +76,24 @@ class DBService:
             logger.exception("Failed to insert prices")
             raise e
 
+    def get_prices(self):
+        try:
+            with self.conn.cursor() as curs:
+                curs.execute(SELECT_ALL_PRICES_SQL)
+                rows = curs.fetchall()
+                df = pd.DataFrame(rows, columns=[
+                    'uid', 'token_address', 'value', 'timestamp',
+                    'market_cap', 'total_volume', 'created_at'
+                ])
+                # Convert strings to numeric
+                df['value'] = df['value'].astype(float)
+                df['market_cap'] = df['market_cap'].astype(float)
+                df['total_volume'] = df['total_volume'].astype(float)
+                # Convert timestamp strings to datetime
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df['created_at'] = pd.to_datetime(df['created_at'])
+                return df
+        except Exception:
+            logger.exception("Failed to get all crypto prices")
+            raise
 

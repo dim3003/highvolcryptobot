@@ -11,6 +11,7 @@ from src.sql import (
     CREATE_PRICES_INDEX_TOKEN_SQL,
     CREATE_PRICES_INDEX_TIMESTAMP_SQL,
     INSERT_PRICES_SQL,
+    SELECT_ALL_PRICES_SQL,
 )
 
 def test_dbservice_store_tokens(mocker):
