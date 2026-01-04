@@ -3,7 +3,7 @@ import psycopg2
 from psycopg2.extensions import connection as Connection
 from psycopg2.extras import execute_values
 from typing import List
-from .sql import (
+from src.sql import (
     CREATE_CONTRACTS_TABLE_SQL,
     INSERT_CONTRACTS_SQL,
     SELECT_CONTRACTS_SQL,

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 from datetime import datetime
-from src.db import DBService
+from src.data.db import DBService
 
 
 def test_fetch_and_store_all_historical_prices(mocker):
@@ -58,10 +58,10 @@ def test_fetch_and_store_all_historical_prices(mocker):
             return iter(prices_token2)
         return iter([])
     
-    mock_get_prices = mocker.patch('src.historical_prices.get_token_prices', side_effect=mock_get_token_prices)
+    mock_get_prices = mocker.patch('src.data.historical_prices.get_token_prices', side_effect=mock_get_token_prices)
     
     # Import and call the function
-    from src.historical_prices import fetch_and_store_all_historical_prices
+    from src.data.historical_prices import fetch_and_store_all_historical_prices
     fetch_and_store_all_historical_prices(db_service)
     
     # --- Assertions ---
@@ -100,7 +100,7 @@ def test_fetch_and_store_all_historical_prices_with_empty_tokens(mocker):
     mock_store_prices = mocker.patch.object(db_service, 'store_prices')
     
     # Import and call the function
-    from src.historical_prices import fetch_and_store_all_historical_prices
+    from src.data.historical_prices import fetch_and_store_all_historical_prices
     fetch_and_store_all_historical_prices(db_service)
     
     # --- Assertions ---
@@ -133,12 +133,12 @@ def test_fetch_and_store_all_historical_prices_with_date_range(mocker):
     mocker.patch.object(db_service, 'store_prices')
     
     mock_get_prices = mocker.patch(
-        'src.historical_prices.get_token_prices',
+        'src.data.historical_prices.get_token_prices',
         return_value=iter(prices)
     )
     
     # Import and call the function
-    from src.historical_prices import fetch_and_store_all_historical_prices
+    from src.data.historical_prices import fetch_and_store_all_historical_prices
     
     # Test with custom date range
     start_date = datetime(2020, 1, 1)

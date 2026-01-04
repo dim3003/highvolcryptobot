@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 from unittest.mock import MagicMock
-from src.fetcher import get_available_tokens, get_token_prices
+from src.data.fetcher import get_available_tokens, get_token_prices
 
 ETH_ADDRESS_REGEX = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
@@ -16,7 +16,7 @@ def test_get_available_tokens_format(mocker):
     }
 
     mocker.patch(
-        "src.fetcher.requests.get",
+        "src.data.fetcher.requests.get",
         return_value=fake_response,
     )
 
@@ -48,7 +48,7 @@ def test_get_token_prices(mocker):
     }
 
     mock_get = mocker.patch(
-        "src.fetcher.requests.post",
+        "src.data.fetcher.requests.post",
         return_value=fake_response,
     )
 

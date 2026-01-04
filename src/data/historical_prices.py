@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from src.db import DBService
-from src.fetcher import get_token_prices
+from src.data.db import DBService
+from src.data.fetcher import get_token_prices
 
 logger = logging.getLogger(__name__)
 

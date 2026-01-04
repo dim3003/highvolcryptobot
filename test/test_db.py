@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from src.db import DBService
+from src.data.db import DBService
 from psycopg2.extras import execute_values
 from src.sql import (
     INSERT_CONTRACTS_SQL,
@@ -26,7 +26,7 @@ def test_dbservice_store_tokens(mocker):
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
     # Patch execute_values to track its calls
-    mock_execute_values = mocker.patch("src.db.execute_values")
+    mock_execute_values = mocker.patch("src.data.db.execute_values")
 
     # Create DBService instance with mock connection
     db_service = DBService(mock_conn)
@@ -102,7 +102,7 @@ def test_dbservice_store_prices(mocker):
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
     # Patch execute_values to track its calls
-    mock_execute_values = mocker.patch("src.db.execute_values")
+    mock_execute_values = mocker.patch("src.data.db.execute_values")
 
     # Create DBService instance with mock connection
     db_service = DBService(mock_conn)
