@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock
-from datetime import datetime
+from datetime import datetime, timedelta
 from src.data.db import DBService
 
 
@@ -68,8 +68,9 @@ def test_fetch_and_store_all_historical_prices(mocker):
     # 1. get_tokens was called
     db_service.get_tokens.assert_called_once()
     
-    # 2. get_token_prices was called for each token
-    assert mock_get_prices.call_count == len(tokens)
+    # 2. get_token_prices was called at least once per token (may be called multiple times due to batching)
+    # With default date range (2015-07-30 to now), there will be multiple batches per token
+    assert mock_get_prices.call_count >= len(tokens)
     
     # 3. store_prices was called for each token with correct data
     assert mock_store_prices.call_count == len(tokens)
@@ -77,12 +78,20 @@ def test_fetch_and_store_all_historical_prices(mocker):
     # Check first token prices were stored correctly
     call_args_token1 = mock_store_prices.call_args_list[0]
     assert call_args_token1[0][0] == tokens[0]
-    assert call_args_token1[0][1] == prices_token1
+    # Prices may be aggregated from multiple batches, so check that they contain our test data
+    stored_prices_token1 = call_args_token1[0][1]
+    assert len(stored_prices_token1) >= len(prices_token1)
+    # Check that our test prices are in the stored prices
+    stored_values = {p.get("value") for p in stored_prices_token1}
+    assert "1900.00" in stored_values or "1950.50" in stored_values
     
     # Check second token prices were stored correctly
     call_args_token2 = mock_store_prices.call_args_list[1]
     assert call_args_token2[0][0] == tokens[1]
-    assert call_args_token2[0][1] == prices_token2
+    stored_prices_token2 = call_args_token2[0][1]
+    assert len(stored_prices_token2) >= len(prices_token2)
+    stored_values_token2 = {p.get("value") for p in stored_prices_token2}
+    assert "1.00" in stored_values_token2
 
 
 def test_fetch_and_store_all_historical_prices_with_empty_tokens(mocker):
@@ -140,13 +149,22 @@ def test_fetch_and_store_all_historical_prices_with_date_range(mocker):
     # Import and call the function
     from src.data.historical_prices import fetch_and_store_all_historical_prices
     
-    # Test with custom date range
+    # Test with custom date range (5 years = ~1825 days, so will need multiple batches)
     start_date = datetime(2020, 1, 1)
     end_date = datetime(2024, 12, 31)
     fetch_and_store_all_historical_prices(db_service, start_date=start_date, end_date=end_date)
     
-    # Verify get_token_prices was called with correct date range
-    call_args = mock_get_prices.call_args
-    assert call_args[1]['start'] == start_date
-    assert call_args[1]['end'] == end_date
+    # Verify get_token_prices was called (multiple times due to batching)
+    assert mock_get_prices.call_count > 0
+    
+    # Check that the first call uses the correct start_date
+    first_call_args = mock_get_prices.call_args_list[0]
+    assert first_call_args[1]['start'] == start_date
+    # The first batch end should be start_date + 364 days (365 days total)
+    expected_first_end = start_date + timedelta(days=364)
+    assert first_call_args[1]['end'] == expected_first_end
+    
+    # Check that the last call's end is at most end_date
+    last_call_args = mock_get_prices.call_args_list[-1]
+    assert last_call_args[1]['end'] <= end_date
 

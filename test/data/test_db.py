@@ -1,7 +1,8 @@
 import pytest
+import pandas as pd
 from unittest.mock import MagicMock
-from src.data.db import DBService
 from psycopg2.extras import execute_values
+from src.data.db import DBService
 from src.sql import (
     INSERT_CONTRACTS_SQL,
     CREATE_CONTRACTS_TABLE_SQL,
@@ -135,3 +136,47 @@ def test_dbservice_store_prices(mocker):
 
     # 3. Commit called
     mock_conn.commit.assert_called()
+
+def test_dbservice_get_prices(mocker):
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.connection.encoding = 'UTF8'
+    mock_data = [
+        ('0x32eb7902d4134bf98a28b963d26de779af92a212',
+         '0x539bde0d7dbd336b79148aa742883198bbf60342',
+         '0.9564383462',
+         '2024-04-10 02:00:00.000 +0200',
+         '251110346.4283975',
+         '37756712.67544287',
+         '2026-01-04 12:35:23.576 +0100'),
+        ('0xabcdefabcdefabcdefabcdefabcdefabcdef',
+         '0x1234567890123456789012345678901234567890',
+         '1.2345',
+         '2025-05-01 10:00:00.000 +0200',
+         '123456789.12345',
+         '9876543.21',
+         '2026-01-01 08:00:00.000 +01:00'),
+    ]
+    mock_cursor.fetchall.return_value = mock_data
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+
+    db_service = DBService(mock_conn)
+    result = db_service.get_prices()
+
+    # Check SQL executed
+    executed_sql = mock_cursor.execute.call_args[0][0]
+    assert SELECT_ALL_PRICES_SQL in executed_sql
+
+    # Build expected DataFrame dynamically
+    expected_df = pd.DataFrame(mock_data, columns=[
+        'uid', 'token_address', 'value', 'timestamp', 'market_cap', 'total_volume', 'created_at'
+    ])
+    # Convert types like your service does
+    expected_df['value'] = expected_df['value'].astype(float)
+    expected_df['market_cap'] = expected_df['market_cap'].astype(float)
+    expected_df['total_volume'] = expected_df['total_volume'].astype(float)
+    expected_df['timestamp'] = pd.to_datetime(expected_df['timestamp'])
+    expected_df['created_at'] = pd.to_datetime(expected_df['created_at'])
+
+    pd.testing.assert_frame_equal(result, expected_df)
+
