@@ -17,7 +17,7 @@ SELECT COUNT(*) FROM contracts;
 """
 
 SELECT_CONTRACTS_SQL = """
-SELECT * FROM contracts;
+SELECT token_address FROM contracts;
 """
 
 CREATE_PRICES_TABLE_SQL = """
@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS prices(
     token_address TEXT NOT NULL,
     value TEXT NOT NULL,
     timestamp TIMESTAMPTZ NOT NULL,
-    market_cap TEXT NOT NULL,
-    total_volume TEXT NOT NULL,
+    market_cap TEXT,
+    total_volume TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(token_address, timestamp)
 )
