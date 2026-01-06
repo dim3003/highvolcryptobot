@@ -89,13 +89,16 @@ class DBService:
                     'uid', 'token_address', 'value', 'timestamp',
                     'market_cap', 'total_volume', 'created_at'
                 ])
+                # Convert to strings
+                df['uid'] = df['uid'].astype(str)
+                df['token_address'] = df['token_address'].astype(str)
                 # Convert strings to numeric
                 df['value'] = df['value'].astype(float)
                 df['market_cap'] = df['market_cap'].astype(float)
                 df['total_volume'] = df['total_volume'].astype(float)
                 # Convert timestamp strings to datetime
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df['created_at'] = pd.to_datetime(df['created_at'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                df['created_at'] = pd.to_datetime(df['created_at'], utc=True)
                 return df
         except Exception:
             logger.exception("Failed to get all crypto prices")
