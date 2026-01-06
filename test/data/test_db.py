@@ -12,6 +12,10 @@ from src.sql import (
     CREATE_PRICES_INDEX_TIMESTAMP_SQL,
     INSERT_PRICES_SQL,
     SELECT_ALL_PRICES_SQL,
+    CREATE_CLEAN_PRICES_TABLE_SQL,
+    CREATE_CLEAN_PRICES_INDEX_TOKEN_SQL,
+    CREATE_CLEAN_PRICES_INDEX_TIMESTAMP_SQL,
+    INSERT_CLEAN_PRICES_SQL,
 )
 
 def test_dbservice_store_tokens(mocker):
@@ -180,4 +184,78 @@ def test_dbservice_get_prices(mocker):
     expected_df['created_at'] = pd.to_datetime(expected_df['created_at'])
 
     pd.testing.assert_frame_equal(result, expected_df)
+
+def test_dbservice_store_clean_prices(mocker):
+    # Sample cleaned dataframe with volatility
+    clean_data = pd.DataFrame([
+        {
+            "token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "value": "1900.00",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "market_cap": "274292310008.21802",
+            "total_volume": "6715146404.608721",
+            "volatility": "0.0523"
+        },
+        {
+            "token_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "value": "1950.50",
+            "timestamp": "2024-01-02T00:00:00Z",
+            "market_cap": "280000000000.00",
+            "total_volume": "7000000000.00",
+            "volatility": "0.0612"
+        }
+    ])
+    
+    # --- Mock Postgres connection and cursor ---
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.connection.encoding = 'UTF8'
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    
+    # Patch execute_values to track its calls
+    mock_execute_values = mocker.patch("src.data.db.execute_values")
+    
+    # Create DBService instance with mock connection
+    db_service = DBService(mock_conn)
+    
+    # Call store_clean_prices
+    db_service.store_clean_prices(clean_data)
+    
+    # --- Assertions ---
+    # 1. Table creation and indexes executed
+    create_table_call = mock_cursor.execute.call_args_list[0][0][0]
+    assert CREATE_CLEAN_PRICES_TABLE_SQL.strip() in create_table_call
+    
+    create_index_token_call = mock_cursor.execute.call_args_list[1][0][0]
+    assert "CREATE INDEX IF NOT EXISTS idx_clean_prices_token_address" in create_index_token_call
+    
+    create_index_timestamp_call = mock_cursor.execute.call_args_list[2][0][0]
+    assert "CREATE INDEX IF NOT EXISTS idx_clean_prices_timestamp" in create_index_timestamp_call
+    
+    # 2. execute_values called with correct data
+    insert_sql_arg = mock_execute_values.call_args[0][1]
+    values_arg = mock_execute_values.call_args[0][2]
+    
+    # Verify INSERT SQL includes volatility field
+    assert "INSERT INTO clean_prices" in insert_sql_arg
+    assert "token_address" in insert_sql_arg
+    assert "volatility" in insert_sql_arg
+    
+    # Verify the data structure matches expected format
+    # Each row should have: token_address, value, timestamp, market_cap, total_volume, volatility
+    assert len(values_arg) == len(clean_data)
+    
+    # Check first row
+    assert values_arg[0][0] == "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    assert values_arg[0][1] == "1900.00"
+    assert values_arg[0][2] == "2024-01-01T00:00:00Z"
+    assert values_arg[0][3] == "274292310008.21802"
+    assert values_arg[0][4] == "6715146404.608721"
+    assert values_arg[0][5] == "0.0523"
+    
+    # Check second row
+    assert values_arg[1][5] == "0.0612"
+    
+    # 3. Commit called
+    mock_conn.commit.assert_called()
 

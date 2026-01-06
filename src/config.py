@@ -32,4 +32,3 @@ class AlchemySettings:
 # Singleton instances
 oneinch_settings = OneInchSettings()
 alchemy_settings = AlchemySettings()
-
