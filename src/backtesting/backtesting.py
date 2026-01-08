@@ -1,60 +1,24 @@
-import psycopg2
+#!/usr/bin/env python3
+"""
+Main backtesting script.
+
+Orchestrates the complete backtesting workflow:
+1. Data cleaning and filtering
+2. Technical indicator calculation
+3. Strategy backtesting
+4. Performance metrics calculation
+5. Results visualization
+"""
+import os
+import logging
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from src.data.db import DBService
-from src.db_config import DB_CONFIG
-from src.backtesting.stablecoins import ARBITRUM_STABLECOINS
+from pathlib import Path
+from src.backtesting.data_cleaner import clean_data
+from src.backtesting.indicators import calculate_indicators
+from src.backtesting.performance import calculate_performance_metrics
+from src.backtesting.plot import plot_backtest_results
 
-def calculate_indicators(df):
-    """Calculate technical indicators for mean reversion + momentum strategy"""
-    df_with_indicators = []
-    
-    for token_addr in df['token_address'].unique():
-        token_data = df[df['token_address'] == token_addr].sort_values('timestamp').copy()
-        
-        # Calculate returns
-        token_data['returns'] = token_data['value'].pct_change()
-        
-        # Moving averages for trend
-        token_data['sma_50'] = token_data['value'].rolling(window=50).mean()
-        token_data['sma_200'] = token_data['value'].rolling(window=200).mean()
-        
-        # Bollinger Bands for mean reversion
-        token_data['bb_middle'] = token_data['value'].rolling(window=20).mean()
-        token_data['bb_std'] = token_data['value'].rolling(window=20).std()
-        token_data['bb_upper'] = token_data['bb_middle'] + (2 * token_data['bb_std'])
-        token_data['bb_lower'] = token_data['bb_middle'] - (2 * token_data['bb_std'])
-        
-        # Distance from BB bands (mean reversion signal)
-        token_data['bb_position'] = (token_data['value'] - token_data['bb_lower']) / (token_data['bb_upper'] - token_data['bb_lower'])
-        
-        # RSI for oversold/overbought
-        token_data['rsi'] = calculate_rsi(token_data['value'], 14)
-        
-        # Momentum indicators
-        token_data['momentum_7d'] = token_data['value'].pct_change(7)
-        token_data['momentum_30d'] = token_data['value'].pct_change(30)
-        
-        # Volume trend
-        token_data['volume_sma_20'] = token_data['total_volume'].rolling(window=20).mean()
-        token_data['volume_ratio'] = token_data['total_volume'] / token_data['volume_sma_20']
-        
-        # Volatility
-        token_data['volatility_30d'] = token_data['returns'].rolling(window=30).std() * np.sqrt(365)
-        
-        df_with_indicators.append(token_data)
-    
-    return pd.concat(df_with_indicators, ignore_index=True)
-
-def calculate_rsi(prices, period=14):
-    """Calculate Relative Strength Index"""
-    delta = prices.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
 
 def backtest_strategy(df, initial_capital=10000, rebalance_days=7):
     """
@@ -225,118 +189,83 @@ def backtest_strategy(df, initial_capital=10000, rebalance_days=7):
     portfolio_df = pd.DataFrame(portfolio_values)
     return portfolio_df
 
-def calculate_performance_metrics(portfolio_df, initial_capital=10000):
-    """Calculate strategy performance metrics"""
-    final_value = portfolio_df['portfolio_value'].iloc[-1]
-    total_return = (final_value - initial_capital) / initial_capital
-    
-    portfolio_df['daily_return'] = portfolio_df['portfolio_value'].pct_change()
-    
-    n_days = len(portfolio_df)
-    years = n_days / 365
-    
-    annualized_return = (final_value / initial_capital) ** (1 / years) - 1
-    volatility = portfolio_df['daily_return'].std() * np.sqrt(365)
-    sharpe_ratio = annualized_return / volatility if volatility > 0 else 0
-    
-    cumulative = (1 + portfolio_df['daily_return']).cumprod()
-    running_max = cumulative.expanding().max()
-    drawdown = (cumulative - running_max) / running_max
-    max_drawdown = drawdown.min()
-    
-    win_rate = (portfolio_df['daily_return'] > 0).sum() / len(portfolio_df['daily_return'].dropna())
-    calmar_ratio = annualized_return / abs(max_drawdown) if max_drawdown != 0 else 0
-    
-    print("\n" + "="*60)
-    print("MEAN REVERSION + MOMENTUM STRATEGY")
-    print("="*60)
-    print(f"Initial Capital:        ${initial_capital:,.2f}")
-    print(f"Final Portfolio Value:  ${final_value:,.2f}")
-    print(f"Total Return:           {total_return*100:.2f}%")
-    print(f"Annualized Return:      {annualized_return*100:.2f}%")
-    print(f"Annualized Volatility:  {volatility*100:.2f}%")
-    print(f"Sharpe Ratio:           {sharpe_ratio:.2f}")
-    print(f"Calmar Ratio:           {calmar_ratio:.2f}")
-    print(f"Maximum Drawdown:       {max_drawdown*100:.2f}%")
-    print(f"Win Rate:               {win_rate*100:.2f}%")
-    print(f"Backtest Days:          {n_days}")
-    print(f"Avg Tokens Held:        {portfolio_df['n_tokens'].mean():.1f}")
-    print("="*60)
-    print("\nBitcoin benchmark ~70% annualized over similar period")
-    print("="*60)
-    
-    return {
-        'final_value': final_value,
-        'total_return': total_return,
-        'annualized_return': annualized_return,
-        'volatility': volatility,
-        'sharpe_ratio': sharpe_ratio,
-        'max_drawdown': max_drawdown,
-        'win_rate': win_rate,
-        'calmar_ratio': calmar_ratio
-    }
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
-def plot_backtest_results(portfolio_df):
-    """Plot backtest results"""
-    fig, axes = plt.subplots(3, 1, figsize=(14, 12))
-    
-    # Plot 1: Portfolio Value Over Time
-    ax1 = axes[0]
-    ax1.plot(portfolio_df['date'], portfolio_df['portfolio_value'], linewidth=2, label='Strategy', color='green')
-    ax1.set_title('Mean Reversion + Momentum Strategy - Portfolio Value', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('Portfolio Value ($)', fontsize=12)
-    ax1.grid(True, alpha=0.3)
-    ax1.axhline(y=10000, color='gray', linestyle='--', alpha=0.5, label='Initial Capital')
-    ax1.legend()
-    ax1.set_yscale('log')
-    
-    # Plot 2: Daily Returns Distribution
-    ax2 = axes[1]
-    returns_pct = portfolio_df['daily_return'].dropna() * 100
-    ax2.hist(returns_pct, bins=50, edgecolor='black', alpha=0.7, color='green')
-    ax2.set_title('Daily Returns Distribution', fontsize=14, fontweight='bold')
-    ax2.set_xlabel('Daily Return (%)', fontsize=12)
-    ax2.set_ylabel('Frequency', fontsize=12)
-    ax2.axvline(x=0, color='red', linestyle='--', alpha=0.5)
-    ax2.axvline(x=returns_pct.mean(), color='darkgreen', linestyle='--', alpha=0.7, label=f'Mean: {returns_pct.mean():.2f}%')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
-    
-    # Plot 3: Drawdown Over Time
-    ax3 = axes[2]
-    portfolio_df['cumulative_return'] = (1 + portfolio_df['daily_return']).cumprod()
-    portfolio_df['running_max'] = portfolio_df['cumulative_return'].expanding().max()
-    portfolio_df['drawdown'] = (portfolio_df['cumulative_return'] - portfolio_df['running_max']) / portfolio_df['running_max']
-    
-    ax3.fill_between(portfolio_df['date'], portfolio_df['drawdown'] * 100, 0, alpha=0.3, color='red')
-    ax3.plot(portfolio_df['date'], portfolio_df['drawdown'] * 100, color='red', linewidth=1)
-    ax3.set_title('Drawdown Over Time', fontsize=14, fontweight='bold')
-    ax3.set_xlabel('Date', fontsize=12)
-    ax3.set_ylabel('Drawdown (%)', fontsize=12)
-    ax3.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig('mean_reversion_backtest.png', dpi=300, bbox_inches='tight')
-    print("\n📊 Charts saved as 'mean_reversion_backtest.png'")
-    plt.show()
+logger = logging.getLogger(__name__)
 
-if __name__ == '__main__':
+# Get the backtesting folder path for saving plots
+BACKTESTING_DIR = Path(__file__).parent
+
+
+def run_backtest(
+    initial_capital: float = 10000,
+    rebalance_days: int = 7,
+    output_filename: str = "backtest_results.png"
+):
+    """
+    Run the complete backtesting workflow.
+    
+    Args:
+        initial_capital: Starting capital for the strategy
+        rebalance_days: Days between rebalancing
+        output_filename: Name of the output plot file (saved in backtesting folder)
+    """
+    logger.info("=" * 60)
+    logger.info("Starting Backtesting Workflow")
+    logger.info("=" * 60)
+    
     # Step 1: Clean data
+    logger.info("\n📊 Step 1: Cleaning and filtering data...")
     df_cleaned = clean_data()
     
+    if df_cleaned.empty:
+        logger.error("No data available after cleaning. Exiting.")
+        return None
+    
     # Step 2: Calculate indicators
-    print("\n📊 Calculating technical indicators...")
+    logger.info("\n📈 Step 2: Calculating technical indicators...")
     df_with_indicators = calculate_indicators(df_cleaned)
     
     # Step 3: Backtest strategy
+    logger.info("\n🎯 Step 3: Running backtest strategy...")
     portfolio_df = backtest_strategy(
-        df_with_indicators, 
-        initial_capital=10000,
-        rebalance_days=7
+        df_with_indicators,
+        initial_capital=initial_capital,
+        rebalance_days=rebalance_days
     )
     
+    if portfolio_df.empty:
+        logger.error("Backtest produced no results. Exiting.")
+        return None
+    
     # Step 4: Calculate performance metrics
-    metrics = calculate_performance_metrics(portfolio_df, initial_capital=10000)
+    logger.info("\n📊 Step 4: Calculating performance metrics...")
+    metrics = calculate_performance_metrics(portfolio_df, initial_capital=initial_capital)
     
     # Step 5: Visualize results
-    plot_backtest_results(portfolio_df)
+    logger.info("\n📈 Step 5: Generating visualizations...")
+    output_path = BACKTESTING_DIR / output_filename
+    plot_backtest_results(portfolio_df, str(output_path))
+    
+    logger.info("\n✅ Backtesting complete!")
+    logger.info(f"Results saved to: {output_path}")
+    
+    return {
+        'portfolio_df': portfolio_df,
+        'metrics': metrics
+    }
+
+
+if __name__ == '__main__':
+    # Run backtest with default parameters
+    results = run_backtest(
+        initial_capital=10000,
+        rebalance_days=7,
+        output_filename="backtest_results.png"
+    )
+
