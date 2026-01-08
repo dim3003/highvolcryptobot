@@ -18,6 +18,8 @@ from src.backtesting.data_cleaner import clean_data
 from src.backtesting.indicators import calculate_indicators
 from src.backtesting.performance import calculate_performance_metrics
 from src.backtesting.plot import plot_backtest_results
+from src.backtesting.slippage import slippage_cost 
+from src.backtesting.transaction_costs import apply_transaction_costs 
 
 
 def backtest_strategy(df, initial_capital=10000, rebalance_days=7):
@@ -146,30 +148,27 @@ def backtest_strategy(df, initial_capital=10000, rebalance_days=7):
                     current_rsi = current_price_data['rsi'].values[0]
                     current_bb_pos = current_price_data['bb_position'].values[0]
                     
-                    # Calculate daily return
+                    # ---------- 1. Calculate raw daily return ----------
                     daily_return = (next_price - current_price) / current_price
-                    
-                    # Check exit conditions
+
+                    # ---------- 2. Apply slippage ----------
+                    # Example: assume pool liquidity = 100,000 USD for simplicity
+                    pool_liquidity = 5_000_000
+                    slippage_fraction = slippage_cost(position['allocation'], pool_liquidity)
+                    daily_return -= slippage_fraction  # reduce return due to slippage
+
+                    # ---------- 3. Apply transaction costs ----------
+                    tx_cost_fraction = apply_transaction_costs(position['allocation']) / position['allocation']
+                    daily_return -= tx_cost_fraction  # reduce return due to fees + gas
+
+                    # ---------- 4. Check exit conditions ----------
                     entry_price = position['entry_price']
                     total_return = (next_price - entry_price) / entry_price
-                    
-                    # Exit rule 1: Stop loss at -12% (SLIGHTLY RELAXED)
-                    if total_return < -0.12:
+
+                    if total_return < -0.12 or current_rsi > 70 or current_bb_pos > 0.95:
                         tokens_to_exit.append(token_addr)
-                        daily_portfolio_return += total_return / len(current_positions)
-                    
-                    # Exit rule 2: Overbought (RSI > 70)
-                    elif current_rsi > 70:
-                        tokens_to_exit.append(token_addr)
-                        daily_portfolio_return += total_return / len(current_positions)
-                    
-                    # Exit rule 3: Hit upper Bollinger Band (take profit)
-                    elif current_bb_pos > 0.95:
-                        tokens_to_exit.append(token_addr)
-                        daily_portfolio_return += total_return / len(current_positions)
-                    
+                        daily_portfolio_return += daily_return / len(current_positions)
                     else:
-                        # Hold position
                         daily_portfolio_return += daily_return / len(current_positions)
             
             # Remove exited positions
