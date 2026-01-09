@@ -14,7 +14,7 @@ def plot_backtest_results(portfolio_df: DataFrame, output_path: str = "backtest_
     ax1 = axes[0]
     initial_capital = portfolio_df['portfolio_value'].iloc[0] if len(portfolio_df) > 0 else 10000
     ax1.plot(portfolio_df['date'], portfolio_df['portfolio_value'], linewidth=2, label='Strategy', color='green')
-    ax1.set_title('Mean Reversion + Momentum Strategy - Portfolio Value', fontsize=14, fontweight='bold')
+    ax1.set_title('Portfolio Value', fontsize=14, fontweight='bold')
     ax1.set_ylabel('Portfolio Value ($)', fontsize=12)
     ax1.grid(True, alpha=0.3)
     ax1.axhline(y=initial_capital, color='gray', linestyle='--', alpha=0.5, label='Initial Capital')
@@ -35,9 +35,10 @@ def plot_backtest_results(portfolio_df: DataFrame, output_path: str = "backtest_
     
     # Plot 3: Drawdown Over Time
     ax3 = axes[2]
-    portfolio_df['cumulative_return'] = (1 + portfolio_df['daily_return']).cumprod()
-    portfolio_df['running_max'] = portfolio_df['cumulative_return'].expanding().max()
-    portfolio_df['drawdown'] = (portfolio_df['cumulative_return'] - portfolio_df['running_max']) / portfolio_df['running_max']
+    portfolio_df = portfolio_df.copy()
+    portfolio_df['running_max'] = portfolio_df['portfolio_value'].cummax()
+    portfolio_df['drawdown'] = (portfolio_df['portfolio_value'] - portfolio_df['running_max']) / portfolio_df['running_max']
+
     
     ax3.fill_between(portfolio_df['date'], portfolio_df['drawdown'] * 100, 0, alpha=0.3, color='red')
     ax3.plot(portfolio_df['date'], portfolio_df['drawdown'] * 100, color='red', linewidth=1)

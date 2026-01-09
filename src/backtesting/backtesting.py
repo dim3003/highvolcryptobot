@@ -10,183 +10,122 @@ Orchestrates the complete backtesting workflow:
 5. Results visualization
 """
 import os
+import random
 import logging
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from src.backtesting.data_cleaner import clean_data
+from src.backtesting.data_cleaner import clean_data, apply_quality_filters
 from src.backtesting.indicators import calculate_indicators
 from src.backtesting.performance import calculate_performance_metrics
 from src.backtesting.plot import plot_backtest_results
-from src.backtesting.slippage import slippage_cost 
-from src.backtesting.transaction_costs import apply_transaction_costs 
+from src.backtesting.transaction_costs import apply_transaction_costs
+from src.backtesting.slippage import slippage_cost
 
 
-def backtest_strategy(df, initial_capital=10000, rebalance_days=7):
+def backtest_strategy(df, initial_capital=10000, rebalance_days=7, sma_period=50):
     """
-    MEAN REVERSION + MOMENTUM STRATEGY
+    SIMPLE SMA STRATEGY
     
-    Philosophy: Buy quality tokens when they're oversold/undervalued, 
-    but only if the long-term trend is up.
-    
-    Selection Criteria:
-    1. Price above 200-day MA (long-term uptrend)
-    2. RSI < 40 (oversold) OR price near lower Bollinger Band
-    3. Positive 30-day momentum (recent strength)
-    4. Above-average volume (conviction in moves)
-    5. Lower volatility preferred (quality over chaos)
-    
-    Exit Rules:
-    1. RSI > 70 (overbought)
-    2. Price hits upper Bollinger Band
-    3. Stop loss at -10% (tight risk management)
-    4. Weekly rebalancing
+    Strategy:
+    - Each rebalance period, select tokens with price above their SMA (uptrend)
+    - Equally allocate capital to selected tokens
+    - Rebalance every `rebalance_days`
+    - Apply daily stop-loss (-8%) per token
     """
     dates = sorted(df['timestamp'].unique())
     portfolio_values = []
     capital = initial_capital
     current_positions = {}
-    
-    print(f"\n=== MEAN REVERSION + MOMENTUM STRATEGY ===")
+
+    print(f"\n=== SMA-{sma_period} STRATEGY ===")
     print(f"Initial Capital: ${initial_capital:,.2f}")
-    print(f"Strategy: Buy oversold tokens in uptrends")
     print(f"Rebalancing: Every {rebalance_days} days")
     print(f"Backtest Period: {dates[0]} to {dates[-1]}")
     print(f"Total Days: {len(dates)}\n")
-    
-    last_rebalance = 200  # Start after 200-day MA is available
-    
-    for i in range(200, len(dates)):
+
+    last_rebalance = 0
+
+    for i in range(len(dates)):
         current_date = dates[i]
-        
-        # Check if it's rebalancing day
         should_rebalance = (i - last_rebalance) >= rebalance_days
+        new_positions = {}
         
         if should_rebalance:
-            # Get data up to current date
-            historical_data = df[df['timestamp'] <= current_date]
-            
-            # Get latest metrics for each token
-            latest_metrics = historical_data.groupby('token_address').agg({
-                'value': 'last',
-                'sma_50': 'last',
-                'sma_200': 'last',
-                'bb_position': 'last',
-                'rsi': 'last',
-                'momentum_30d': 'last',
-                'volume_ratio': 'last',
-                'volatility_30d': 'last'
-            }).reset_index()
-            
-            # Remove NaN values
-            latest_metrics = latest_metrics.dropna()
-            
-            if len(latest_metrics) == 0:
+            eligible_tokens = apply_quality_filters(df, current_date)
+
+            if not eligible_tokens:
                 continue
-            
-            # Apply strategy filters
-            candidates = latest_metrics.copy()
-            
-            # 1. Long-term uptrend: Price above 200-day MA
-            candidates = candidates[candidates['value'] > candidates['sma_200']]
-            
-            # 2. Oversold conditions: RSI < 50 OR near lower BB (RELAXED)
-            candidates = candidates[
-                (candidates['rsi'] < 50) | 
-                (candidates['bb_position'] < 0.4)
+
+            today_data = df[
+                (df['timestamp'] == current_date) &
+                (df['token_address'].isin(eligible_tokens))
+            ][['token_address', 'value', f'sma_{sma_period}']].dropna()
+
+            selected_tokens = today_data[
+                today_data['value'] > today_data[f'sma_{sma_period}']
             ]
-            
-            # 3. Recent momentum positive (recovering, not falling knife)
-            candidates = candidates[candidates['momentum_30d'] > -0.15]  # Allow more downside
-            
-            # 4. Above average volume (conviction)
-            candidates = candidates[candidates['volume_ratio'] > 0.5]  # RELAXED from 0.8
-            
-            if len(candidates) == 0:
-                # If no candidates, hold cash or keep existing positions
-                continue
-            
-            # 5. Rank by quality score (prefer lower volatility + better RSI)
-            candidates['quality_score'] = (
-                (40 - candidates['rsi']) / 40 * 0.5 +  # Lower RSI = higher score
-                (1 - candidates['volatility_30d'] / candidates['volatility_30d'].max()) * 0.3 +  # Lower vol = higher score
-                (candidates['volume_ratio'] / candidates['volume_ratio'].max()) * 0.2  # Higher volume = higher score
-            )
-            
-            # Select top 10 tokens by quality score (INCREASED)
-            n_tokens = min(10, len(candidates))
-            selected_tokens = candidates.nlargest(n_tokens, 'quality_score')
-            
-            # Update positions
-            if len(selected_tokens) > 0:
-                current_positions = {}
+
+            new_positions = {}
+
+            if not selected_tokens.empty:
                 allocation_per_token = capital / len(selected_tokens)
-                
-                for _, token_row in selected_tokens.iterrows():
-                    current_positions[token_row['token_address']] = {
-                        'entry_price': token_row['value'],
+
+                for _, row in selected_tokens.iterrows():
+                    tx_cost = apply_transaction_costs(allocation_per_token)
+                    entry_price = row['value'] * (1 + tx_cost / allocation_per_token)
+
+                    new_positions[row['token_address']] = {
+                        'entry_price': entry_price,
                         'allocation': allocation_per_token
                     }
-            
+
+            current_positions = new_positions
             last_rebalance = i
-        
-        # Calculate daily returns with exit rules
-        if i < len(dates) - 1 and len(current_positions) > 0:
-            next_date = dates[i + 1]
-            daily_portfolio_return = 0
-            tokens_to_exit = []
-            
-            for token_addr, position in list(current_positions.items()):
-                current_price_data = df[(df['token_address'] == token_addr) & 
-                                       (df['timestamp'] == current_date)]
-                next_price_data = df[(df['token_address'] == token_addr) & 
-                                    (df['timestamp'] == next_date)]
-                
-                if len(current_price_data) > 0 and len(next_price_data) > 0:
-                    current_price = current_price_data['value'].values[0]
-                    next_price = next_price_data['value'].values[0]
-                    current_rsi = current_price_data['rsi'].values[0]
-                    current_bb_pos = current_price_data['bb_position'].values[0]
-                    
-                    # ---------- 1. Calculate raw daily return ----------
-                    daily_return = (next_price - current_price) / current_price
 
-                    # ---------- 2. Apply slippage ----------
-                    # Example: assume pool liquidity = 100,000 USD for simplicity
-                    pool_liquidity = 5_000_000
-                    slippage_fraction = slippage_cost(position['allocation'], pool_liquidity)
-                    daily_return -= slippage_fraction  # reduce return due to slippage
 
-                    # ---------- 3. Apply transaction costs ----------
-                    tx_cost_fraction = apply_transaction_costs(position['allocation']) / position['allocation']
-                    daily_return -= tx_cost_fraction  # reduce return due to fees + gas
+        # Daily portfolio update
+        daily_portfolio_return = 0
+        tokens_to_exit = []
 
-                    # ---------- 4. Check exit conditions ----------
-                    entry_price = position['entry_price']
-                    total_return = (next_price - entry_price) / entry_price
+        for token_addr, position in current_positions.items():
+            today_data = df[(df['token_address'] == token_addr) & (df['timestamp'] == current_date)]
+            yesterday_data = df[(df['token_address'] == token_addr) & (df['timestamp'] == dates[i-1])] if i > 0 else None
 
-                    if total_return < -0.12 or current_rsi > 70 or current_bb_pos > 0.95:
-                        tokens_to_exit.append(token_addr)
-                        daily_portfolio_return += daily_return / len(current_positions)
-                    else:
-                        daily_portfolio_return += daily_return / len(current_positions)
-            
-            # Remove exited positions
-            for token in tokens_to_exit:
-                if token in current_positions:
-                    del current_positions[token]
-            
-            # Update capital
-            capital = capital * (1 + daily_portfolio_return)
-        
+            if len(today_data) == 0 or (yesterday_data is None or len(yesterday_data) == 0):
+                continue
+
+            today_price = today_data['value'].values[0]
+            yesterday_price = yesterday_data['value'].values[0]
+
+            total_return = (today_price - position['entry_price']) / position['entry_price']
+
+            # Exit rule: daily stop-loss
+            if total_return < -0.08:
+                slippage_fraction = slippage_cost(position['allocation'], pool_liquidity=100_000_000)
+                tx_cost_fraction = apply_transaction_costs(position['allocation']) / position['allocation']
+                exit_penalty = slippage_fraction + tx_cost_fraction
+                daily_portfolio_return += (today_price - yesterday_price)/yesterday_price * (position['allocation']/capital) - exit_penalty
+                tokens_to_exit.append(token_addr)
+            else:
+                daily_return = (today_price - yesterday_price) / yesterday_price
+                daily_portfolio_return += daily_return * (position['allocation']/capital)
+
+        for token in tokens_to_exit:
+            if token in current_positions:
+                del current_positions[token]
+
+        # Update portfolio value
+        capital = capital * (1 + daily_portfolio_return)
         portfolio_values.append({
             'date': current_date,
             'portfolio_value': capital,
-            'n_tokens': len(current_positions),
+            'n_tokens': len(current_positions)
         })
-    
+
     portfolio_df = pd.DataFrame(portfolio_values)
     return portfolio_df
+
 
 # Configure logging
 logging.basicConfig(
@@ -267,4 +206,3 @@ if __name__ == '__main__':
         rebalance_days=7,
         output_filename="backtest_results.png"
     )
-

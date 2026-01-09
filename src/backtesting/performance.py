@@ -29,7 +29,7 @@ def calculate_performance_metrics(portfolio_df, initial_capital=10000):
     calmar_ratio = annualized_return / abs(max_drawdown) if max_drawdown != 0 else 0
     
     print("\n" + "="*60)
-    print("MEAN REVERSION + MOMENTUM STRATEGY")
+    print("RESULTS")
     print("="*60)
     print(f"Initial Capital:        ${initial_capital:,.2f}")
     print(f"Final Portfolio Value:  ${final_value:,.2f}")

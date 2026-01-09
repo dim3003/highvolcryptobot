@@ -9,48 +9,51 @@ def clean_data():
     with psycopg2.connect(**DB_CONFIG) as conn:
         db_service = DBService(conn)
         df = db_service.get_prices()
-        
+
         # Remove stablecoins
         stablecoin_addresses = list(ARBITRUM_STABLECOINS.keys())
-        df_filtered = df[~df['token_address'].isin(stablecoin_addresses)]
-        
-        print(f"Tokens before filtering: {df_filtered['token_address'].nunique()}")
-        
-        # Apply quality filters
-        df_cleaned = apply_quality_filters(df_filtered)
-        
-        print(f"Tokens after filtering: {df_cleaned['token_address'].nunique()}")
-        
-        return df_cleaned
+        df = df[~df['token_address'].isin(stablecoin_addresses)]
 
-def apply_quality_filters(df):
-    """Remove tokens that don't meet quality criteria"""
-    tokens_to_keep = []
-    
-    for token_addr in df['token_address'].unique():
-        token_data = df[df['token_address'] == token_addr].sort_values('timestamp')
-        
-        # Minimum market cap - want established tokens
-        avg_mcap = token_data['market_cap'].mean()
-        if avg_mcap < 5_000_000:
+        print(f"Tokens after stablecoin removal: {df['token_address'].nunique()}")
+
+        # Basic sanity cleanup only
+        df = df.dropna(subset=['value', 'market_cap'])
+        df = df[df['value'] > 0]
+
+        return df
+
+
+def apply_quality_filters(df, current_date):
+    """
+    Time-safe universe selection.
+    Uses only information available up to current_date.
+    """
+    eligible_tokens = []
+
+    for token_addr, token_data in df.groupby('token_address'):
+        token_data = token_data[token_data['timestamp'] <= current_date] \
+            .sort_values('timestamp')
+
+        # Token must exist by now
+        if len(token_data) < 90:
             continue
-        
-        # Require sufficient data
-        if len(token_data) < 730:
+
+        # Latest market cap (NO future averaging)
+        latest_mcap = token_data['market_cap'].iloc[-1]
+        if latest_mcap < 5_000_000:
             continue
-        
-        # Filter extreme volatility
-        price_changes = token_data['value'].pct_change().abs()
-        max_change = price_changes.max()
-        if max_change > 2.0:
+
+        # Liquidity filter (recent)
+        recent_volume = token_data['total_volume'].tail(30)
+        if (recent_volume == 0).mean() > 0.1:
             continue
-        
-        # Reject tokens with too many zero-volume days
-        if (token_data['total_volume'] == 0).sum() > len(token_data) * 0.1:
+
+        # Recent volatility filter (NO future max)
+        recent_returns = token_data['value'].pct_change().tail(30)
+        if recent_returns.abs().max() > 2.0:
             continue
-        
-        tokens_to_keep.append(token_addr)
-    
-    df_cleaned = df[df['token_address'].isin(tokens_to_keep)]
-    print(f"✅ Kept {len(tokens_to_keep)} tokens after filtering")
-    return df_cleaned
+
+        eligible_tokens.append(token_addr)
+
+    return eligible_tokens
+
