@@ -1,6 +1,5 @@
 """Backtesting framework for trading strategies."""
 
-from .backtesting import run_backtest, backtest_strategy
 from .data_cleaner import clean_data, apply_quality_filters
 from .indicators import calculate_indicators, calculate_rsi
 from .performance import calculate_performance_metrics
