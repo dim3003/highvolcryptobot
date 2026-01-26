@@ -1,13 +1,13 @@
 {
     "initial_capital_usd": 10000,
-    "final_value_usd": 10736790,
-    "total_return_pct": 107267.9,
-    "annualized_return_pct": 134.48,
-    "volatility_pct": 139.51,
-    "max_drawdown_pct": -98.17,
-    "win_rate_pct": 39.52,
-    "sharpe_ratio": 0.96,
-    "calmar_ratio": 1.37,
+    "final_value_usd": 12060854,
+    "total_return_pct": 120508.54,
+    "annualized_return_pct": 137.84,
+    "volatility_pct": 136.4,
+    "max_drawdown_pct": -96.45,
+    "win_rate_pct": 39.79,
+    "sharpe_ratio": 1.01,
+    "calmar_ratio": 1.43,
     "backtest_days": 2989,
-    "avg_tokens_held": 1.08
+    "avg_tokens_held": 1.35
 }

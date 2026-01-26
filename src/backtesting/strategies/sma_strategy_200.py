@@ -4,21 +4,24 @@ from src.backtesting.data_cleaner import apply_quality_filters
 from src.backtesting.transaction_costs import apply_transaction_costs
 from src.backtesting.slippage import slippage_cost
 
+
 def backtest_strategy(
     df: pd.DataFrame,
     initial_capital: float = 10000,
     rebalance_days: int = 7,
-    low_vol_pct: float = 0.3,
-    high_vol_pct: float = 0.3,
+    sma_period: int = 200,
 ):
     """
-    Contrarian Trend Strategy:
-    - Buy low-volatility coins with negative momentum
-    - Avoid or sell high-volatility coins with positive momentum
+    Simple SMA strategy.
 
     Assumes:
-    - df has columns ['token_address', 'timestamp', 'value', 'volatility_30d', 'momentum_30d']
+    - df is already cleaned
+    - indicators (including SMA) are already calculated
     """
+
+    sma_col = f"sma_{sma_period}"
+    if sma_col not in df.columns:
+        raise ValueError(f"Required column '{sma_col}' not found in dataframe")
 
     dates = sorted(df["timestamp"].unique())
     capital = initial_capital
@@ -38,33 +41,19 @@ def backtest_strategy(
             today = df[
                 (df["timestamp"] == current_date)
                 & (df["token_address"].isin(eligible_tokens))
-            ][["token_address", "value", "volatility_30d", "momentum_30d"]].dropna()
+            ][["token_address", "value", sma_col]].dropna()
 
-            if today.empty:
-                current_positions = {}
-                last_rebalance_idx = i
-                portfolio_history.append(
-                    {"date": current_date, "portfolio_value": capital, "n_tokens": 0}
-                )
-                continue
+            selected = today[today["value"] > today[sma_col]]
 
-            # Low-vol coins (bottom X%) with negative momentum → BUY
-            n_low_vol = max(1, int(len(today) * low_vol_pct))
-            low_vol_tokens = today.nsmallest(n_low_vol, "volatility_30d")
-            buy_candidates = low_vol_tokens[low_vol_tokens["momentum_30d"] < 0]
-
-            # High-vol coins (top X%) with positive momentum → remove/avoid
-            n_high_vol = max(1, int(len(today) * high_vol_pct))
-            high_vol_tokens = today.nlargest(n_high_vol, "volatility_30d")
-            sell_candidates = high_vol_tokens[high_vol_tokens["momentum_30d"] > 0]
-
-            # Update positions
             current_positions = {}
-            if not buy_candidates.empty:
-                allocation = capital / len(buy_candidates)
-                for _, row in buy_candidates.iterrows():
+
+            if not selected.empty:
+                allocation = capital / len(selected)
+
+                for _, row in selected.iterrows():
                     tx_cost = apply_transaction_costs(allocation)
                     entry_price = row["value"] * (1 + tx_cost / allocation)
+
                     current_positions[row["token_address"]] = {
                         "entry_price": entry_price,
                         "allocation": allocation,
@@ -73,7 +62,7 @@ def backtest_strategy(
             last_rebalance_idx = i
 
         # ------------------------
-        # Daily update / PnL
+        # Daily update
         # ------------------------
         daily_return = 0.0
         exits = []
@@ -83,6 +72,7 @@ def backtest_strategy(
                 (df["timestamp"] == current_date)
                 & (df["token_address"] == token)
             ]
+
             if i == 0 or today_row.empty:
                 continue
 
@@ -90,6 +80,7 @@ def backtest_strategy(
                 (df["timestamp"] == dates[i - 1])
                 & (df["token_address"] == token)
             ]
+
             if yesterday_row.empty:
                 continue
 
@@ -117,7 +108,12 @@ def backtest_strategy(
         capital *= (1 + daily_return)
 
         portfolio_history.append(
-            {"date": current_date, "portfolio_value": capital, "n_tokens": len(current_positions)}
+            {
+                "date": current_date,
+                "portfolio_value": capital,
+                "n_tokens": len(current_positions),
+            }
         )
 
     return pd.DataFrame(portfolio_history)
+
