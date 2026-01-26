@@ -1,0 +1,13 @@
+{
+    "initial_capital_usd": 10000,
+    "final_value_usd": 50715152,
+    "total_return_pct": 507051.52,
+    "annualized_return_pct": 183.43,
+    "volatility_pct": 84.46,
+    "max_drawdown_pct": -76.86,
+    "win_rate_pct": 40.23,
+    "sharpe_ratio": 2.17,
+    "calmar_ratio": 2.39,
+    "backtest_days": 2989,
+    "avg_tokens_held": 6.55
+}

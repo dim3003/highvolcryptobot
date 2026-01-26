@@ -27,7 +27,8 @@ def calculate_indicators(df):
         # ------------------------
         # Moving averages for trend
         # ------------------------
-        token_data['sma_20'] = token_data['value'].rolling(window=20).mean()   # short-term trend
+        for i in range(5, 31):
+            token_data[f'sma_{i}'] = token_data['value'].rolling(window=i).mean()
         token_data['sma_50'] = token_data['value'].rolling(window=50).mean()   # mid-term trend
         token_data['sma_200'] = token_data['value'].rolling(window=200).mean() # long-term trend
         

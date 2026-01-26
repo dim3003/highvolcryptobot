@@ -56,7 +56,8 @@ def run_backtest(
     initial_capital: float = 10000,
     rebalance_days: int = 7,
     output_plot: str = "backtest_results.png",
-    metrics_filename: str = None
+    metrics_filename: str = None,
+    sma: int = None
 ):
     """
     Run the complete backtesting workflow with a given strategy module.
@@ -92,7 +93,8 @@ def run_backtest(
     portfolio_df = strategy_module.backtest_strategy(
         df_with_indicators,
         initial_capital=initial_capital,
-        rebalance_days=rebalance_days
+        rebalance_days=rebalance_days,
+        sma_period=sma
     )
     if portfolio_df.empty:
         logger.error("Backtest produced no results. Exiting.")
@@ -134,6 +136,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--capital", type=float, default=10000)
     parser.add_argument("--rebalance", type=int, default=7)
+    parser.add_argument("--sma", type=int)
 
     args = parser.parse_args()
 
@@ -149,8 +152,8 @@ if __name__ == "__main__":
         exit(1)
 
     # Auto-generate filenames from strategy name
-    metrics_filename = f"{args.strategy_name}_metrics.json"
-    plot_filename = f"{args.strategy_name}_plot.png"
+    metrics_filename = f"{args.strategy_name}{args.sma}_metrics.json"
+    plot_filename = f"{args.strategy_name}{args.sma}_plot.png"
 
     # Run the backtest
     run_backtest(
@@ -158,6 +161,7 @@ if __name__ == "__main__":
         initial_capital=args.capital,
         rebalance_days=args.rebalance,
         output_plot=plot_filename,
-        metrics_filename=metrics_filename
+        metrics_filename=metrics_filename,
+        sma=args.sma
     )
 
