@@ -3,23 +3,12 @@ import psycopg2
 import pandas as pd
 from psycopg2.extensions import connection as Connection
 from psycopg2.extras import execute_values
+from psycopg2 import sql
 from typing import List
 from src.sql.public import (
     CREATE_CONTRACTS_TABLE_SQL,
     INSERT_CONTRACTS_SQL,
     SELECT_CONTRACTS_SQL,
-)
-from src.sql.backtest import (
-    CREATE_BACKTEST_SCHEMA,
-    CREATE_PRICES_TABLE_SQL,
-    CREATE_PRICES_INDEX_TOKEN_SQL,
-    CREATE_PRICES_INDEX_TIMESTAMP_SQL,
-    INSERT_PRICES_SQL,
-    SELECT_ALL_PRICES_SQL,
-    CREATE_CLEAN_PRICES_TABLE_SQL,
-    CREATE_CLEAN_PRICES_INDEX_TOKEN_SQL,
-    CREATE_CLEAN_PRICES_INDEX_TIMESTAMP_SQL,
-    INSERT_CLEAN_PRICES_SQL,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,7 +41,7 @@ class DBService:
             raise
 
     # --- Prices ---
-    def store_prices(self, token_address: str, prices: List[dict]):
+    def store_prices(self, token_address: str, prices: List[dict], schema: str="backtest"):
         """
         Store daily price data for a token.
         
@@ -72,11 +61,42 @@ class DBService:
         ]
         try:
             with self.conn.cursor() as curs:
-                curs.execute(CREATE_BACKTEST_SCHEMA)
-                curs.execute(CREATE_PRICES_TABLE_SQL)
-                curs.execute(CREATE_PRICES_INDEX_TOKEN_SQL)
-                curs.execute(CREATE_PRICES_INDEX_TIMESTAMP_SQL)
-                execute_values(curs, INSERT_PRICES_SQL, rows)
+                curs.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(schema)))
+                curs.execute(
+                    sql.SQL("""
+                        CREATE TABLE IF NOT EXISTS {}.prices(
+                            uid UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                            token_address TEXT NOT NULL,
+                            value NUMERIC NOT NULL,
+                            timestamp TIMESTAMPTZ NOT NULL,
+                            market_cap NUMERIC,
+                            total_volume NUMERIC,
+                            created_at TIMESTAMPTZ DEFAULT NOW(),
+                            UNIQUE(token_address, timestamp)
+                        )
+                    """).format(sql.Identifier(schema))
+                )
+                curs.execute(
+                    sql.SQL("""
+                        CREATE INDEX IF NOT EXISTS idx_prices_token_address ON {}.prices(token_address)
+                    """).format(sql.Identifier(schema))
+                )
+                curs.execute(
+                    sql.SQL("""
+                        CREATE INDEX IF NOT EXISTS idx_prices_timestamp ON {}.prices(timestamp)
+                    """).format(sql.Identifier(schema))
+                )
+                execute_values(
+                    curs,
+                    sql.SQL("""
+                        INSERT INTO {}.prices(token_address, value, timestamp, market_cap, total_volume)
+                        VALUES %s
+                        ON CONFLICT (token_address, timestamp) DO UPDATE SET
+                            value = EXCLUDED.value,
+                            market_cap = EXCLUDED.market_cap,
+                            total_volume = EXCLUDED.total_volume;
+                    """).format(sql.Identifier(schema)),
+                    rows)
             self.conn.commit()
             logger.info("Inserted %d prices for token %s", len(prices), token_address)
         except Exception as e:
@@ -84,10 +104,14 @@ class DBService:
             logger.exception("Failed to insert prices")
             raise e
 
-    def get_prices(self):
+    def get_prices(self, schema: str="backtest"):
         try:
             with self.conn.cursor() as curs:
-                curs.execute(SELECT_ALL_PRICES_SQL)
+                curs.execute(
+                    sql.SQL("""
+                        SELECT * FROM {}.prices;
+                    """).format(sql.Identifier(schema))
+                )
                 rows = curs.fetchall()
                 df = pd.DataFrame(rows, columns=[
                     'uid', 'token_address', 'value', 'timestamp',
