@@ -3,10 +3,7 @@ import pandas as pd
 from unittest.mock import MagicMock
 from psycopg2.extras import execute_values
 from src.data.db import DBService
-from src.sql import (
-    INSERT_CONTRACTS_SQL,
-    CREATE_CONTRACTS_TABLE_SQL,
-    SELECT_CONTRACTS_SQL,
+from src.sql.backtest import (
     CREATE_PRICES_TABLE_SQL,
     CREATE_PRICES_INDEX_TOKEN_SQL,
     CREATE_PRICES_INDEX_TIMESTAMP_SQL,
@@ -16,6 +13,11 @@ from src.sql import (
     CREATE_CLEAN_PRICES_INDEX_TOKEN_SQL,
     CREATE_CLEAN_PRICES_INDEX_TIMESTAMP_SQL,
     INSERT_CLEAN_PRICES_SQL,
+)
+from src.sql.public import (
+    INSERT_CONTRACTS_SQL,
+    CREATE_CONTRACTS_TABLE_SQL,
+    SELECT_CONTRACTS_SQL,
 )
 
 def test_dbservice_store_tokens(mocker):
@@ -117,13 +119,12 @@ def test_dbservice_store_prices(mocker):
     db_service.store_prices(token_address, prices)
 
     # --- Assertions ---
-    # 1. Table creation and indexes executed
-    create_table_call = mock_cursor.execute.call_args_list[0][0][0]
-    assert CREATE_PRICES_TABLE_SQL.strip() in create_table_call
-    create_index_token_call = mock_cursor.execute.call_args_list[1][0][0]
-    assert CREATE_PRICES_INDEX_TOKEN_SQL.strip() in create_index_token_call
-    create_index_timestamp_call = mock_cursor.execute.call_args_list[2][0][0]
-    assert CREATE_PRICES_INDEX_TIMESTAMP_SQL.strip() in create_index_timestamp_call
+        # 1. Schema/table/index creation executed (order may change)
+    executed_sql = [c.args[0] for c in mock_cursor.execute.call_args_list]
+
+    assert any(CREATE_PRICES_TABLE_SQL.strip() in s for s in executed_sql)
+    assert any(CREATE_PRICES_INDEX_TOKEN_SQL.strip() in s for s in executed_sql)
+    assert any(CREATE_PRICES_INDEX_TIMESTAMP_SQL.strip() in s for s in executed_sql)
 
     # 2. execute_values called with correct data
     insert_sql_arg = mock_execute_values.call_args[0][1]
@@ -180,8 +181,9 @@ def test_dbservice_get_prices(mocker):
     expected_df['value'] = expected_df['value'].astype(float)
     expected_df['market_cap'] = expected_df['market_cap'].astype(float)
     expected_df['total_volume'] = expected_df['total_volume'].astype(float)
-    expected_df['timestamp'] = pd.to_datetime(expected_df['timestamp'])
-    expected_df['created_at'] = pd.to_datetime(expected_df['created_at'])
+    expected_df["timestamp"] = pd.to_datetime(expected_df["timestamp"], utc=True)
+    expected_df["created_at"] = pd.to_datetime(expected_df["created_at"], utc=True)
+
 
     pd.testing.assert_frame_equal(result, expected_df)
 

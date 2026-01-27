@@ -59,7 +59,7 @@ def fetch_and_store_all_historical_prices(
         processed_tokens += 1
         try:
             # Print progress
-            print(f"[{processed_tokens}/{total_tokens}] Fetching prices for token: {token_address}", end="\r")
+            logger.info(f"[{processed_tokens}/{total_tokens}] Fetching prices for token: {token_address}")
             
             # Collect all prices from all batches
             all_prices = []

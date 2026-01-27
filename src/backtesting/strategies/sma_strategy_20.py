@@ -116,4 +116,3 @@ def backtest_strategy(
         )
 
     return pd.DataFrame(portfolio_history)
-

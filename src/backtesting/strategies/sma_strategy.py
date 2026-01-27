@@ -9,7 +9,7 @@ def backtest_strategy(
     df: pd.DataFrame,
     initial_capital: float = 10000,
     rebalance_days: int = 7,
-    sma_period: int = 50,
+    sma_period: int = 19,
 ):
     """
     Simple SMA strategy.

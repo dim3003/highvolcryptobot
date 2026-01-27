@@ -4,10 +4,13 @@ import pandas as pd
 from psycopg2.extensions import connection as Connection
 from psycopg2.extras import execute_values
 from typing import List
-from src.sql import (
+from src.sql.public import (
     CREATE_CONTRACTS_TABLE_SQL,
     INSERT_CONTRACTS_SQL,
     SELECT_CONTRACTS_SQL,
+)
+from src.sql.backtest import (
+    CREATE_BACKTEST_SCHEMA,
     CREATE_PRICES_TABLE_SQL,
     CREATE_PRICES_INDEX_TOKEN_SQL,
     CREATE_PRICES_INDEX_TIMESTAMP_SQL,
@@ -69,6 +72,7 @@ class DBService:
         ]
         try:
             with self.conn.cursor() as curs:
+                curs.execute(CREATE_BACKTEST_SCHEMA)
                 curs.execute(CREATE_PRICES_TABLE_SQL)
                 curs.execute(CREATE_PRICES_INDEX_TOKEN_SQL)
                 curs.execute(CREATE_PRICES_INDEX_TIMESTAMP_SQL)

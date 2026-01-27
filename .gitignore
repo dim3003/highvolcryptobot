@@ -178,3 +178,7 @@ pyrightconfig.json
 # Db configuration file
 src/db_config.py
 
+# Virtual environments
+myenv/
+venv/
+
